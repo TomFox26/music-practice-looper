@@ -122,7 +122,7 @@
 
       <div class="row">
         <label for="duration">録音長 (秒):</label>
-        <!-- 上限を 120 秒に変更 -->
+        <!-- 上限を 120 秒に変更／デフォルト60秒 -->
         <input type="number" id="duration" min="3" max="120" value="60" style="width:80px;">
         <!-- 最長録音時間の表示 -->
         <span id="maxDurationInfo" style="font-size:12px; color:#bdc1c6;"></span>
@@ -143,11 +143,22 @@
         </label>
       </div>
 
+      <!-- カウント設定（BPM + 音量） -->
       <div class="row">
         <label>
           <input type="checkbox" id="countCheckbox" checked>
           再生前にカウント
         </label>
+
+        <label for="countBpm">カウント BPM:</label>
+        <input
+          type="number"
+          id="countBpm"
+          min="30"
+          max="300"
+          value="100"
+          style="width:80px;"
+        >
 
         <label style="margin-left:auto;">カウント音量:</label>
         <input type="range" id="countVolume" min="0" max="100" value="60">
@@ -196,6 +207,7 @@
     const statusEl = document.getElementById("status");
     const audioEl = document.getElementById("audioPlayer");
     const maxDurationInfo = document.getElementById("maxDurationInfo");
+    const countBpmInput = document.getElementById("countBpm");
 
     // 再生バー関連
     const seekBar = document.getElementById("seekBar");
@@ -273,7 +285,6 @@
       const userVal = Number(durationInput.value) || 60;
       const maxSec = Math.max(3, Math.min(MAX_DURATION, userVal));
       durationInput.value = maxSec;  // 入力値を補正
-      // ここで MAX_DURATION を使っているので 120 秒が上限になる
 
       if (!captureStream) {
         logStatus("先に「音源選択」ボタンで画面/タブ＋音声を選択してください。");
@@ -409,9 +420,19 @@
 
       if (countCheckbox.checked) {
         logStatus("カウント中...");
+
+        // BPM入力から間隔を決定
+        let bpmRaw = Number(countBpmInput.value);
+        if (!isFinite(bpmRaw) || bpmRaw <= 0) {
+          bpmRaw = 100;        // 入力が変でもとりあえず100に
+        }
+        const bpm = Math.min(300, Math.max(30, bpmRaw)); // 30〜300に制限
+        countBpmInput.value = bpm;                       // 補正値を表示に反映
+        const intervalMs = 60000 / bpm;                  // 1拍分のミリ秒
+
         for (let i = 0; i < 4; i++) {
           playBeep();
-          await sleep(500);
+          await sleep(intervalMs);
         }
       }
 
@@ -492,5 +513,4 @@
   </script>
 </body>
 </html>
-
 
