@@ -73,8 +73,8 @@
     }
     /* 広告枠（左右のみ） */
     .ad {
-      width: 160px;      /* 好きな幅に調整可 */
-      min-height: 600px; /* 最低サイズ、広告ユニットに合わせて調整 */
+      width: 160px;
+      min-height: 600px;
       background: #1a1b1f;
       border-radius: 8px;
       box-shadow: 0 8px 24px rgba(0,0,0,0.35);
@@ -94,13 +94,20 @@
         min-height: 120px;
       }
     }
+
+    /* 再生バーまわり */
+    #seekRow span {
+      font-size: 12px;
+      color: #bdc1c6;
+      min-width: 38px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
   <div class="layout">
-    <!-- 左広告枠：ここにディスプレイ広告タグを入れる -->
+    <!-- 左広告枠 -->
     <aside class="ad" id="ad-left">
-      <!-- 例: AdSense のディスプレイ広告コードを貼る -->
       左側広告エリア
     </aside>
 
@@ -115,7 +122,10 @@
 
       <div class="row">
         <label for="duration">録音長 (秒):</label>
-        <input type="number" id="duration" min="3" max="60" value="15" style="width:80px;">
+        <!-- 上限を 120 秒に変更 -->
+        <input type="number" id="duration" min="3" max="120" value="15" style="width:80px;">
+        <!-- 最長録音時間の表示 -->
+        <span id="maxDurationInfo" style="font-size:12px; color:#bdc1c6;"></span>
       </div>
 
       <div class="row">
@@ -143,20 +153,38 @@
         <input type="range" id="countVolume" min="0" max="100" value="60">
       </div>
 
-      <!-- ユーザーにはコントロールを出さない（＝保存・ダウンロードさせない） -->
+      <!-- 再生バー（シークバー＋時間表示） -->
+      <div class="row" id="seekRow">
+        <span id="currentTime">0:00</span>
+        <input
+          type="range"
+          id="seekBar"
+          min="0"
+          max="0"
+          value="0"
+          step="0.01"
+          style="flex:1;"
+          disabled
+        >
+        <span id="totalTime">0:00</span>
+      </div>
+
+      <!-- ユーザーにはコントロールを出さない -->
       <audio id="audioPlayer"></audio>
 
       <div id="status"></div>
     </main>
 
-    <!-- 右広告枠：ここにディスプレイ広告タグを入れる -->
+    <!-- 右広告枠 -->
     <aside class="ad" id="ad-right">
-      <!-- 例: AdSense のディスプレイ広告コードを貼る -->
       右側広告エリア
     </aside>
   </div>
 
   <script>
+    // 録音可能な最長秒数（ここを変えれば一括で反映）
+    const MAX_DURATION = 120;
+
     const sourceBtn = document.getElementById("sourceBtn");
     const recordBtn = document.getElementById("recordBtn");
     const playBtn = document.getElementById("playBtn");
@@ -167,6 +195,12 @@
     const countVolumeSlider = document.getElementById("countVolume");
     const statusEl = document.getElementById("status");
     const audioEl = document.getElementById("audioPlayer");
+    const maxDurationInfo = document.getElementById("maxDurationInfo");
+
+    // 再生バー関連
+    const seekBar = document.getElementById("seekBar");
+    const currentTimeEl = document.getElementById("currentTime");
+    const totalTimeEl = document.getElementById("totalTime");
 
     let captureStream = null;
     let mediaRecorder = null;
@@ -174,6 +208,9 @@
     let audioURL = null;
     let isRecording = false;
     let audioCtx = null;
+
+    // 「最長録音時間：XXX秒」を表示
+    maxDurationInfo.textContent = `最長録音時間：${MAX_DURATION}秒`;
 
     function logStatus(text) {
       statusEl.textContent = text;
@@ -183,6 +220,15 @@
       try { el.preservesPitch = v; } catch {}
       try { el.mozPreservesPitch = v; } catch {}
       try { el.webkitPreservesPitch = v; } catch {}
+    }
+
+    // mm:ss 形式に整形
+    function formatTime(seconds) {
+      if (!isFinite(seconds) || seconds < 0) seconds = 0;
+      seconds = Math.floor(seconds);
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return `${m}:${s.toString().padStart(2, "0")}`;
     }
 
     // --- 音源ウィンドウ選択 ---
@@ -224,8 +270,10 @@
 
     // --- 録音 ---
     async function startRecording() {
-      const maxSec = Math.max(3, Math.min(60, Number(durationInput.value) || 15));
-      durationInput.value = maxSec;
+      const userVal = Number(durationInput.value) || 15;
+      const maxSec = Math.max(3, Math.min(MAX_DURATION, userVal));
+      durationInput.value = maxSec;  // 入力値を補正
+      // ここで MAX_DURATION を使っているので 120 秒が上限になる
 
       if (!captureStream) {
         logStatus("先に「音源選択」ボタンで画面/タブ＋音声を選択してください。");
@@ -268,7 +316,6 @@
             URL.revokeObjectURL(audioURL);
           }
           audioURL = URL.createObjectURL(blob);
-          // URL は audio 要素にだけ紐付けし、UIとしての「保存ボタン」は用意しない
           audioEl.src = audioURL;
           audioEl.load();
           playBtn.disabled = false;
@@ -349,7 +396,7 @@
       return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
-    // --- 再生 ---
+    // --- 再生＋カウントイン ---
     async function playWithCountIn() {
       if (!audioEl.src) {
         alert("まだ録音されていません。");
@@ -359,7 +406,6 @@
       const speed = parseFloat(speedSelect.value);
       audioEl.playbackRate = speed;
       setPreservePitch(audioEl, true);
-      // ループ設定は ended イベント側で制御
 
       if (countCheckbox.checked) {
         logStatus("カウント中...");
@@ -371,6 +417,9 @@
 
       logStatus("再生中...");
       audioEl.currentTime = 0;
+      seekBar.value = 0;
+      currentTimeEl.textContent = "0:00";
+
       try {
         await audioEl.play();
       } catch (err) {
@@ -393,10 +442,38 @@
       } else {
         audioEl.pause();
         audioEl.currentTime = 0;
+        seekBar.value = 0;
+        currentTimeEl.textContent = "0:00";
         playBtn.textContent = "再生";
         playBtn.classList.add("secondary");
         logStatus("停止中");
       }
+    });
+
+    // --- 再生バーの更新・シーク ---
+    audioEl.addEventListener("loadedmetadata", () => {
+      if (isFinite(audioEl.duration)) {
+        seekBar.max = audioEl.duration;
+        seekBar.value = 0;
+        seekBar.disabled = false;
+        totalTimeEl.textContent = formatTime(audioEl.duration);
+        currentTimeEl.textContent = "0:00";
+      }
+    });
+
+    audioEl.addEventListener("timeupdate", () => {
+      if (!isNaN(audioEl.currentTime)) {
+        seekBar.value = audioEl.currentTime;
+        currentTimeEl.textContent = formatTime(audioEl.currentTime);
+      }
+    });
+
+    // ユーザーがバーをドラッグしたときにシーク
+    seekBar.addEventListener("input", () => {
+      if (seekBar.disabled) return;
+      const t = Number(seekBar.value) || 0;
+      audioEl.currentTime = t;
+      currentTimeEl.textContent = formatTime(t);
     });
 
     audioEl.addEventListener("ended", () => {
@@ -405,6 +482,8 @@
       } else {
         playBtn.textContent = "再生";
         playBtn.classList.add("secondary");
+        seekBar.value = 0;
+        currentTimeEl.textContent = "0:00";
         logStatus("停止中");
       }
     });
